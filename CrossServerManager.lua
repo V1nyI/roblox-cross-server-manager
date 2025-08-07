@@ -121,7 +121,7 @@ Monitoring._listeners = {
 }
 
 --// Private Variables
-local _CURRENT_VERSION = "v1.0.3"
+local _CURRENT_VERSION = "v1.0.5"
 local _VERSION_URL = "https://raw.githubusercontent.com/V1nyI/roblox-cross-server-manager/refs/heads/main/Version.txt"
 
 --// Utilities
