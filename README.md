@@ -1,6 +1,6 @@
 # CrossServerManager
 
-A Roblox module for advanced cross-server messaging and distributed communication. Supports reliable message delivery, retries, deduplication, replay, throttling, custom monitoring, using Roblox’s MessagingService and MemoryStoreService APIs.
+A Roblox module for advanced cross-server messaging, Supports reliable message delivery, retries, deduplication, replay, throttling, custom monitoring, using Roblox’s MessagingService and MemoryStoreService APIs.
 
 ---
 
