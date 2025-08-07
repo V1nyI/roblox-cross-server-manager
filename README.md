@@ -46,6 +46,8 @@ You only need to call `:Start()` once per server.
 
 ## Basic Usage
 
+### note: Set localPublish to true to publish the message only locally on the current server. This is useful for testing or when you want to avoid sending messages across servers.
+
 ```lua
 -- Subscribe to a topic
 local subscription = CrossServerManager:Subscribe("MyTopic", function(payload, uuid, seq, messageType)
@@ -112,8 +114,33 @@ end)
 - `:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean})` – Publish Multiple Messages
 ## BulkPublish
 - ### Publishes all messages atomically — if one fails, none are sent.
+- #### Supports up to 100 messages in a single batch
 - Supports both MemoryStore-based retention and local-only publish.
 - Bypasses message queue if flagged for local delivery only.
+
+## Example Usage:
+```
+local messages = {
+	{
+		topic = "Topic1",
+		payload = {
+			userId = 1,
+			score = 100
+		}
+	},
+	{
+		topic = "Topic2",
+		payload = {
+			event = "Rain",
+			time = os.time(),
+            AdminMessage = "Rain has started! Let your friends know, they have 60 seconds to join and catch the event!"
+		},
+        messageRetentionTime = 60 -- Optional: make it replayable for 60s
+	}
+}
+
+CrossServerManager:BulkPublish(messages)
+```
 ---
 
 ## License
