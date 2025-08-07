@@ -110,7 +110,7 @@ end)
 
 ---
 
-## Update logs, Version: "v1.0.3"
+## Update logs, Version: "v1.0.5"
 - `:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean})` – Publish Multiple Messages
 ## BulkPublish
 - ### Publishes all messages atomically — if one fails, none are sent.
