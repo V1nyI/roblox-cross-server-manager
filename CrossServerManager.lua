@@ -6,7 +6,7 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 --// Debug
-local _Debug = false
+local _Debug = true
 
 --// Constants
 local MEMORY_STORE_MAP_NAME = "CrossServerMessages"
@@ -821,7 +821,12 @@ end
 ]]
 function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean}}, localBulkPublish: boolean)
 	assert(type(messages) == "table" and #messages > 0, "BulkPublish expects a non-empty array of message entries")
-
+	
+	if #messages > 100 then
+		_log("warn", "BulkPublish: Exceeded max batch size of 100 messages")
+		return false, "Exceeded max batch size of 100 messages"
+	end
+	
 	if localBulkPublish == true then
 		for _, v in ipairs(messages) do
 			v.localPublish = true
@@ -842,36 +847,36 @@ function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any,
 		local messageType = msg.messageType or "default"
 		local retentionTime = msg.messageRetentionTime or MEMORY_STORE_EXPIRY
 		local localPublish = msg.localPublish or false
-		
+
 		if type(topic) ~= "string" then
 			_log("warn", "BulkPublish: Invalid topic at index", index)
 			return false, "Invalid topic at index "..index
 		end
-		
+
 		local ok, err = validatePayload(payload)
 		if not ok then
 			_log("warn", "BulkPublish: Invalid payload at index", index, err)
 			return false, "Invalid payload at index "..index..": "..err
 		end
-		
+
 		local okEncode, encodedPayload = pcall(function()
 			return HttpService:JSONEncode(payload)
 		end)
-		
+
 		if not okEncode or not encodedPayload then
 			_log("warn", "BulkPublish: Payload encoding failed at index", index)
 			return false, "Invalid payload at index "..index
 		end
-		
+
 		if #encodedPayload >= 990 then
 			_log("warn", "BulkPublish: Payload too large at index", index)
 			return false, "Payload too large at index "..index
 		end
-		
+
 		local uuid = HttpService:GenerateGUID(false)
 		local timestamp = os.time()
 		local queueKey = tostring(timestamp).."_"..uuid
-		
+
 		local encodedMessage = HttpService:JSONEncode({
 			topic = topic,
 			payload = payload,
@@ -880,11 +885,11 @@ function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any,
 			uuid = uuid,
 			timestamp = timestamp,
 		})
-		
+
 		local success, err = pcall(function()
 			QUEUE_MEMORY_STORE:SetAsync(queueKey, encodedMessage, retentionTime)
 		end)
-		
+
 		if success then
 			table.insert(queuedEntries, {
 				queueKey = queueKey,
@@ -897,7 +902,7 @@ function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any,
 			})
 		else
 			_log("warn", "BulkPublish: Failed to queue at index", index, err)
-			
+
 			for _, entry in ipairs(queuedEntries) do
 				task.wait(0.3)
 				pcall(function()
@@ -908,7 +913,7 @@ function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any,
 			return false, "Failed to queue message at index "..index..": "..tostring(err)
 		end
 	end
-	
+
 	task.spawn(function()
 		for _, entry in ipairs(queuedEntries) do
 			self:Publish(
@@ -1142,7 +1147,6 @@ function CrossServerManager:Start()
 		end
 	end)
 end
-
 
 --[[
 	Subscribe to monitoring events
