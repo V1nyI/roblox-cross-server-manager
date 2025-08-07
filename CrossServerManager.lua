@@ -6,7 +6,7 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 --// Debug
-local Debug = false
+local _Debug = false
 
 --// Constants
 local MEMORY_STORE_MAP_NAME = "CrossServerMessages"
@@ -95,7 +95,7 @@ local _receivedUUIDs: ReceivedUUIDs = {}
 local _recentMessages: RecentMessages = {}
 local _pendingMessages: {PendingMessage} = {}
 local _subscribers: Subscribers = {}
-local _serverId: ServerIdType = tostring(math.random(1e9))
+local _serverId: ServerIdType = game.JobId
 local _lastSeqPerTopic: LastSeqPerTopic = {}
 local _lastAckPerMessage: LastAckPerMessage = {}
 local _messageTypeConfig: MessageTypeConfig = {}
@@ -121,13 +121,13 @@ Monitoring._listeners = {
 }
 
 --// Private Variables
-local _CURRENT_VERSION = "1.0.0"
+local _CURRENT_VERSION = "v1.0.3"
 local _VERSION_URL = "https://raw.githubusercontent.com/V1nyI/roblox-cross-server-manager/refs/heads/main/Version.txt"
 
 --// Utilities
 local function _log(level, ...)
-	if Debug == false then return end
-	
+	if _Debug == false then return end
+
 	local prefix = "[CrossServerManager]:"
 	if level == "log" then
 		print(prefix, ...)
@@ -145,7 +145,7 @@ local function _checkForUpdate()
 	if success and latestVersion then
 		latestVersion = latestVersion:match("^%s*(.-)%s*$")
 		if latestVersion ~= _CURRENT_VERSION then
-			_log("warn", "New version available:", latestVersion)
+			warn("[CrossServerManager]: New version available:", latestVersion)
 		end
 	else
 		_log("warn", "Failed to check for updates:", latestVersion)
@@ -215,37 +215,37 @@ local function _canProcessMessage(messageType)
 		_messageTypeCounters[messageType] = {count = 1, windowStart = now}
 		return true
 	end
-	
+
 	if now - counter.windowStart >= THROTTLE_WINDOW then
 		counter.count = 1
 		counter.windowStart = now
 		return true
 	end
-	
+
 	if counter.count < (_messageTypeConfig[messageType] and _messageTypeConfig[messageType].throttleLimit or math.huge) then
 		counter.count = counter.count + 1
 		return true
 	end
-	
+
 	return false
 end
 
 local function _RUThrottleCheck()
 	local now = os.time()
-	
+
 	if now - _lastRUReset >= RU_COOLDOWN then
 		_lastRUReset = now
 		_ruCallCount = 0
 	end
-	
+
 	if _isThrottled and (tick() - _lastThrottleTime) < THROTTLE_BACKOFF_SECONDS then
 		return false, "RecentlyThrottled"
 	end
-	
+
 	if _ruCallCount >= MAX_RU_CALLS_PER_MINUTE then
 		return false, "RateLimit"
 	end
-	
+
 	_ruCallCount += 1
 	return true
 end
@@ -261,20 +261,20 @@ local CrossServerManager = {}
 ]]
 function CrossServerManager:Subscribe(topic: Topic, callback: SubscriberCallback)
 	assert(type(callback) == "function", "Callback must be function")
-	
+
 	local id = HttpService:GenerateGUID(false)
-	
+
 	_subscribers[topic] = _subscribers[topic] or {}
 	_subscribers[topic][id] = {
 		callback = callback,
 		active = true,
 	}
-	
+
 	if not _activeSubscriptions[topic] then
 		local ok, subscriptionOrErr = pcall(function()
 			return MessagingService:SubscribeAsync(topic, _onMessageReceived)
 		end)
-		
+
 		if ok and subscriptionOrErr then
 			_activeSubscriptions[topic] = subscriptionOrErr
 			_log("log", "Subscribed to", topic)
@@ -282,29 +282,29 @@ function CrossServerManager:Subscribe(topic: Topic, callback: SubscriberCallback
 			_log("warn", "Failed to subscribe to", topic, subscriptionOrErr)
 		end
 	end
-	
+
 	local SubscriptionHandle = {}
 	SubscriptionHandle.__index = SubscriptionHandle
-	
+
 	function SubscriptionHandle:Pause()
 		local entry = _subscribers[topic] and _subscribers[topic][id]
 		if entry then
 			entry.active = false
 		end
 	end
-	
+
 	function SubscriptionHandle:Resume()
 		local entry = _subscribers[topic] and _subscribers[topic][id]
 		if entry then
 			entry.active = true
 		end
 	end
-	
+
 	function SubscriptionHandle:IsPaused()
 		local entry = _subscribers[topic] and _subscribers[topic][id]
 		return entry and not entry.active or false
 	end
-	
+
 	function SubscriptionHandle:PauseFor(seconds)
 		assert(type(seconds) == "number" and seconds > 0, "PauseFor requires a positive number of seconds")
 		self:Pause()
@@ -314,13 +314,13 @@ function CrossServerManager:Subscribe(topic: Topic, callback: SubscriberCallback
 			end
 		end)
 	end
-	
+
 	function SubscriptionHandle:Unsubscribe()
 		CrossServerManager:Unsubscribe(topic, id)
 		setmetatable(self, nil)
 		for k in pairs(self) do self[k] = nil end
 	end
-	
+
 	return setmetatable({}, SubscriptionHandle)
 end
 
@@ -332,39 +332,39 @@ function CrossServerManager:UpdateRetentionTime(uuid: string, newRetentionTime: 
 	if not map then
 		return false, "MemoryStore unavailable"
 	end
-	
+
 	local success, raw = pcall(function()
 		return map:GetAsync(uuid)
 	end)
-	
+
 	if not success or not raw then
 		return false, "Message not found"
 	end
-	
+
 	local ok, message = pcall(function()
 		return HttpService:JSONDecode(raw)
 	end)
-	
+
 	if not ok or type(message) ~= "table" then
 		return false, "Malformed message data"
 	end
-	
+
 	if message.status == "cancelled" or message.status == "published" then
 		return false, "Cannot update retention for finalized message"
 	end
-	
+
 	message.retentionTime = newRetentionTime
-	
+
 	local encoded = HttpService:JSONEncode(message)
-	
+
 	local setSuccess, setErr = pcall(function()
 		map:SetAsync(uuid, encoded, newRetentionTime)
 	end)
-	
+
 	if not setSuccess then
 		return false, "Failed to update retention: ".. tostring(setErr)
 	end
-	
+
 	return true
 end
 
@@ -376,35 +376,35 @@ function CrossServerManager:CancelPublish(uuid: string)
 	if not map then
 		return false, "MemoryStore unavailable"
 	end
-	
+
 	local success, raw = pcall(function()
 		return map:GetAsync(uuid)
 	end)
-	
+
 	if not success or not raw then
 		return false, "Message not found"
 	end
-	
+
 	local ok, message = pcall(function()
 		return HttpService:JSONDecode(raw)
 	end)
-	
+
 	if not ok or type(message) ~= "table" then
 		return false, "Malformed message data"
 	end
-	
+
 	message.status = "cancelled"
-	
+
 	local encoded = HttpService:JSONEncode(message)
-	
+
 	local setSuccess, setErr = pcall(function()
 		map:SetAsync(uuid, encoded, 10)
 	end)
-	
+
 	if not setSuccess then
 		return false, "Failed to cancel message: ".. tostring(setErr)
 	end
-	
+
 	return true
 end
 
@@ -414,23 +414,23 @@ end
 function CrossServerManager:CancelAllPublishes()
 	local map = MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
 	local queueMap = MemoryStoreService:GetSortedMap(QUEUE_MEMORY_STORE_NAME)
-	
+
 	if not map or not queueMap then
 		return false, "MemoryStore unavailable"
 	end
-	
+
 	local function cancelMessagesInMap(targetMap, shouldRemove)
 		local cancelled = 0
 
 		local success, entries = pcall(function()
 			return targetMap:GetRangeAsync(Enum.SortDirection.Ascending, 100)
 		end)
-		
+
 		if not success then
 			_log("warn", "Failed to retrieve messages from map.")
 			return 0
 		end
-		
+
 		for _, entry in ipairs(entries) do
 			if shouldRemove then
 				local okRemove, errRemove = pcall(function()
@@ -440,7 +440,7 @@ function CrossServerManager:CancelAllPublishes()
 				if okRemove then
 					cancelled += 1
 				else
-					_log("warn", "Failed to remove queueMap message " .. tostring(entry.key) .. ": " .. tostring(errRemove))
+					_log("warn", "Failed to remove queueMap message "..tostring(entry.key)..": "..tostring(errRemove))
 				end
 			else
 				local raw = nil
@@ -464,22 +464,22 @@ function CrossServerManager:CancelAllPublishes()
 						if okSet then
 							cancelled += 1
 						else
-							_log("warn", "Failed to cancel message " .. tostring(entry.key) .. ": " .. tostring(errSet))
+							_log("warn", "Failed to cancel message "..tostring(entry.key)..": "..tostring(errSet))
 						end
 					end
 				else
-					_log("warn", "Failed to get message " .. tostring(entry.key) .. ": " .. tostring(errGet))
+					_log("warn", "Failed to get message "..tostring(entry.key)..": "..tostring(errGet))
 				end
 			end
 		end
-		
+
 		return cancelled
 	end
-	
+
 	local cancelCountMap = cancelMessagesInMap(map, false)
 	local cancelCountQueue = cancelMessagesInMap(queueMap, true)
 	local totalCancelled = cancelCountMap + cancelCountQueue
-	
+
 	return true, ("Cancelled %d messages (map: %d, queueMap: %d)"):format(totalCancelled, cancelCountMap, cancelCountQueue)
 end
 
@@ -489,12 +489,12 @@ end
 function CrossServerManager:Unsubscribe(topic: Topic, id: string)
 	local topicSubs = _subscribers[topic]
 	if not topicSubs then return end
-	
+
 	topicSubs[id] = nil
-	
+
 	if next(topicSubs) == nil then
 		_subscribers[topic] = nil
-		
+
 		local subscription = _activeSubscriptions[topic]
 		if subscription then
 			local success, err = pcall(function()
@@ -504,7 +504,7 @@ function CrossServerManager:Unsubscribe(topic: Topic, id: string)
 					subscription:Unsubscribe()
 				end
 			end)
-			
+
 			if not success then
 				_log("warn", "Failed to unsubscribe from MessagingService topic:", topic, err)
 			else
@@ -536,56 +536,56 @@ end
 ]]
 function CrossServerManager:_Proccess_Queue(topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean)
 	local QUEUE_MEMORY_STORE = MemoryStoreService:GetSortedMap(QUEUE_MEMORY_STORE_NAME)
-	
+
 	local okRU, reason = _RUThrottleCheck()
 	if not okRU then
 		_log("warn", "Skipping due to "..reason.." Cooldown for 30 seconds...")
 		task.wait(30)
 		return nil, false, reason
 	end
-	
+
 	local entries
 	local success, result = pcall(function()
 		return QUEUE_MEMORY_STORE:GetRangeAsync(Enum.SortDirection.Ascending, 100)
 	end)
-	
+
 	if not success then
 		if tostring(result):find("RequestThrottled") then
 			_isThrottled = true
 			_lastThrottleTime = tick()
-			_log("warn", "MemoryStore throttled, backing off: " .. tostring(result))
+			_log("warn", "MemoryStore throttled, backing off: "..tostring(result))
 			return nil, false, "RequestThrottled"
 		end
 
-		_log("warn", "Failed to fetch queue entries: " .. tostring(result))
+		_log("warn", "Failed to fetch queue entries: "..tostring(result))
 		return nil, false, "QueueFetchFailed"
 	end
-	
+
 	entries = result
-	
+
 	_isThrottled = false
-	
+
 	if #entries >= QUEUE_LIMIT then
 		_log("warn", "Queue is full, skipping message")
 		task.wait(10)
 		return nil, false, "QueueFull"
 	end
-	
+
 	local totalSize = 0
 	local payloadSize = #HttpService:JSONEncode(payload)
 	for _, entry in ipairs(entries) do
 		totalSize += #entry.value
 	end
-	
+
 	if totalSize + payloadSize > 20000 then
 		_log("warn", "Queue size limit reached, skipping message")
 		return nil, false, "QueueSizeLimit"
 	end
-	
+
 	local uuid = _generateUUID()
 	local now = os.time()
-	local queueKey = tostring(now) .. "_" .. uuid
-	
+	local queueKey = tostring(now).."_"..uuid
+
 	local message = {
 		uuid = uuid,
 		topic = topic,
@@ -596,24 +596,24 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 		localPublish = localPublish,
 		retentionTime = messageRetentionTime,
 	}
-	
+
 	local encoded = HttpService:JSONEncode(message)
 	local success, err = pcall(function()
 		QUEUE_MEMORY_STORE:SetAsync(queueKey, encoded, 120)
 	end)
-	
+
 	if not success then
 		if tostring(err):find("RequestThrottled") then
 			_isThrottled = true
 			_lastThrottleTime = tick()
-			_log("warn", "SetAsync throttled, backing off: " .. tostring(err))
+			_log("warn", "SetAsync throttled, backing off: "..tostring(err))
 			return nil, false, "RequestThrottled"
 		end
-		
-		_log("warn", "Failed to enqueue message: " .. tostring(err))
+
+		_log("warn", "Failed to enqueue message: "..tostring(err))
 		return nil, false, "QueueEnqueueFailed"
 	end
-	
+
 	if not _queueProcessorRunning then
 		_queueProcessorRunning = true
 		task.spawn(function()
@@ -623,11 +623,11 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 					task.wait(1)
 					continue
 				end
-				
+
 				local ok, entries = pcall(function()
 					return QUEUE_MEMORY_STORE:GetRangeAsync(Enum.SortDirection.Ascending, 1)
 				end)
-				
+
 				if not ok then
 					if tostring(entries):find("RequestThrottled") then
 						_isThrottled = true
@@ -637,16 +637,16 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 						continue
 					end
 				end
-				
+
 				_isThrottled = false
-				
+
 				if entries and #entries > 0 then
 					local entry = entries[1]
 					local raw = nil
 					local okGet = pcall(function()
 						raw = QUEUE_MEMORY_STORE:GetAsync(entry.key)
 					end)
-					
+
 					if okGet and raw then
 						local okDecode, msg = pcall(function()
 							return HttpService:JSONDecode(raw)
@@ -661,13 +661,42 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 						end)
 					end
 				end
-				
+
 				task.wait(QUEUE_PROCCESS_INTERVAL)
 			end
 		end)
 	end
-	
+
 	return uuid, true
+end
+
+local function validatePayload(payload)
+	local payloadType = typeof(payload)
+	
+	if payloadType == "string" or payloadType == "number" or payloadType == "boolean" or payload == nil then
+		return true
+	end
+	
+	if payloadType == "Instance" then
+		return false, "Payload contains Roblox Instance, which is not allowed"
+	end
+	
+	if payloadType == "table" then
+		for key, value in pairs(payload) do
+			local keyType = typeof(key)
+			if keyType ~= "string" and keyType ~= "number" then
+				return false, ("Invalid key type in payload: %s"):format(keyType)
+			end
+			
+			local ok, err = validatePayload(value)
+			if not ok then
+				return false, err
+			end
+		end
+		return true
+	end
+	
+	return false, ("Unsupported payload type: %s"):format(payloadType)
 end
 
 --[[
@@ -677,9 +706,14 @@ end
 ]]
 function CrossServerManager:Publish(topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean, _BypassQueue: boolean)
 	messageType = messageType or "default"
-	
 	if localPublish == nil then
 		localPublish = false
+	end
+	
+	local ok, err = validatePayload(payload)
+	if not ok then
+		_log("warn", "Publish: Invalid payload for topic", topic, err)
+		return nil, false, "InvalidPayload: "..err
 	end
 	
 	if not _canProcessMessage(messageType) then
@@ -727,7 +761,7 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 		_dedupeAdd(uuid)
 		_fireSubscribers(topic, uuid, payload, seq, messageType)
 		_invokeListeners(Monitoring._listeners.onMessageSent, uuid, topic, payload, seq, messageType)
-		
+
 		_lastAckPerMessage[uuid] = {
 			servers = {[_serverId] = true},
 			requiredAckCount = nil,
@@ -742,14 +776,14 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 	end
 	
 	local MessageSize = #HttpService:JSONEncode(message)
-	
+
 	if MessageSize >= 990 then
 		_log("warn", "Message too large for MessagingService ("..MessageSize.." bytes), using MemoryStore for topic:", topic)
 		return
 	end
 	
 	if useMemoryStore then
-		local timestampKey = tostring(now) .. "_" .. uuid
+		local timestampKey = tostring(now).."_"..uuid
 		local map = MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
 		local encoded = HttpService:JSONEncode(message)
 		local success, err = pcall(function()
@@ -766,7 +800,7 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 	local successMs, errMs = pcall(function()
 		MessagingService:PublishAsync(topic, HttpService:JSONEncode(message))
 	end)
-	
+
 	if successMs then
 		_lastAckPerMessage[uuid] = {
 			servers = {[_serverId] = true},
@@ -782,16 +816,126 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 	end
 end
 
+--[[
+	Publish Multiple Messages
+]]
+function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean}}, localBulkPublish: boolean)
+	assert(type(messages) == "table" and #messages > 0, "BulkPublish expects a non-empty array of message entries")
+
+	if localBulkPublish == true then
+		for _, v in ipairs(messages) do
+			v.localPublish = true
+		end
+	end
+	
+	local QUEUE_MEMORY_STORE = MemoryStoreService:GetSortedMap(QUEUE_MEMORY_STORE_NAME)
+	local queuedEntries = {}
+	
+	for index, msg in ipairs(messages) do
+		if type(msg) ~= "table" then
+			_log("warn", "BulkPublish: Invalid message at index", index)
+			return false, "Invalid message at index "..index
+		end
+		
+		local topic = msg.topic
+		local payload = msg.payload
+		local messageType = msg.messageType or "default"
+		local retentionTime = msg.messageRetentionTime or MEMORY_STORE_EXPIRY
+		local localPublish = msg.localPublish or false
+		
+		if type(topic) ~= "string" then
+			_log("warn", "BulkPublish: Invalid topic at index", index)
+			return false, "Invalid topic at index "..index
+		end
+		
+		local ok, err = validatePayload(payload)
+		if not ok then
+			_log("warn", "BulkPublish: Invalid payload at index", index, err)
+			return false, "Invalid payload at index "..index..": "..err
+		end
+		
+		local okEncode, encodedPayload = pcall(function()
+			return HttpService:JSONEncode(payload)
+		end)
+		
+		if not okEncode or not encodedPayload then
+			_log("warn", "BulkPublish: Payload encoding failed at index", index)
+			return false, "Invalid payload at index "..index
+		end
+		
+		if #encodedPayload >= 990 then
+			_log("warn", "BulkPublish: Payload too large at index", index)
+			return false, "Payload too large at index "..index
+		end
+		
+		local uuid = HttpService:GenerateGUID(false)
+		local timestamp = os.time()
+		local queueKey = tostring(timestamp).."_"..uuid
+		
+		local encodedMessage = HttpService:JSONEncode({
+			topic = topic,
+			payload = payload,
+			messageType = messageType,
+			retentionTime = retentionTime,
+			uuid = uuid,
+			timestamp = timestamp,
+		})
+		
+		local success, err = pcall(function()
+			QUEUE_MEMORY_STORE:SetAsync(queueKey, encodedMessage, retentionTime)
+		end)
+		
+		if success then
+			table.insert(queuedEntries, {
+				queueKey = queueKey,
+				topic = topic,
+				payload = payload,
+				messageType = messageType,
+				retentionTime = retentionTime,
+				localPublish = localPublish,
+				uuid = uuid,
+			})
+		else
+			_log("warn", "BulkPublish: Failed to queue at index", index, err)
+			
+			for _, entry in ipairs(queuedEntries) do
+				task.wait(0.3)
+				pcall(function()
+					QUEUE_MEMORY_STORE:RemoveAsync(entry.queueKey)
+				end)
+			end
+
+			return false, "Failed to queue message at index "..index..": "..tostring(err)
+		end
+	end
+	
+	task.spawn(function()
+		for _, entry in ipairs(queuedEntries) do
+			self:Publish(
+				entry.topic,
+				entry.payload,
+				entry.messageType,
+				entry.retentionTime,
+				entry.localPublish,
+				true
+			)
+			task.wait(0.1)
+		end
+	end)
+
+	return true
+end
+
 local function _processMessage(message)
 	if _dedupeCheck(message.uuid) then
 		_invokeListeners(Monitoring._listeners.onMessageDeduped, message.uuid, message.topic)
 		return
 	end
-	
+
 	if message.serverId and message.serverId ~= _serverId then
 		return
 	end
-	
+
 	_dedupeAdd(message.uuid)
 	_fireSubscribers(message.topic, message.uuid, message.payload, message.seq, message.messageType)
 	local ackEntry = _lastAckPerMessage[message.uuid] or {servers = {}, requiredAckCount = nil}
@@ -805,12 +949,12 @@ function _onMessageReceived(publishedMessage)
 	local ok, message = pcall(function()
 		return HttpService:JSONDecode(raw)
 	end)
-	
+
 	if not ok or type(message) ~= "table" or not message.uuid then
 		_log("warn", "Received malformed message via MessagingService")
 		return
 	end
-	
+
 	if not _subscribers[message.topic] then return end
 	_processMessage(message)
 end
@@ -820,29 +964,29 @@ local function _memoryStorePoller()
 	local success, result = pcall(function()
 		return MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
 	end)
-	
+
 	if not success or not result then
 		_log("warn", "MemoryStoreService unavailable. Skipping MemoryStore polling. Error:", result)
 		return
 	end
-	
+
 	map = result
 	local lastChecked = 0
-	
+
 	while true do
 		local now = os.time()
 		if now - lastChecked >= 30 then
 			local ok, entriesOrErr = pcall(function()
 				return map:GetRangeAsync(Enum.SortDirection.Descending, 1)
 			end)
-			
+
 			if ok and entriesOrErr then
 				for _, entry in ipairs(entriesOrErr) do
 					local val = nil
 					local successGet, errGet = pcall(function()
 						val = map:GetAsync(entry.key)
 					end)
-					
+
 					if successGet and val then
 						local ok2, message = pcall(function()
 							return HttpService:JSONDecode(val)
@@ -901,23 +1045,22 @@ end
 function CrossServerManager:ReplayMissedMessages(topic: Topic, sinceTimestamp: number)
 	assert(type(topic) == "string", "Topic must be string")
 	assert(type(sinceTimestamp) == "number", "sinceTimestamp must be number")
-	
+
 	local map = MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
 	if not map then
 		_log("warn", "MemoryStoreService map not available for replay")
 		return
 	end
-	
+
 	local success, entriesOrErr = pcall(function()
-		local maxToFetch = 100
-		return map:GetRangeAsync(Enum.SortDirection.Ascending, maxToFetch)
+		return map:GetRangeAsync(Enum.SortDirection.Ascending, MAX_RECENT_MESSAGES)
 	end)
-	
+
 	if not success or not entriesOrErr then
 		_log("warn", "Failed to get entries from MemoryStore for replay:", entriesOrErr)
 		return
 	end
-	
+
 	for _, entry in ipairs(entriesOrErr) do
 		local raw = nil
 		local okGet, errGet = pcall(function()
@@ -954,9 +1097,9 @@ end
 function CrossServerManager:Start()
 	if _initialized then _log("warn", "Already initialized") return end
 	_initialized = true
-	
+
 	task.delay(2, _checkForUpdate)
-	
+
 	local success, err = pcall(function()
 		for topic, _ in pairs(_subscribers) do
 			local ok, err = pcall(function()
@@ -967,10 +1110,10 @@ function CrossServerManager:Start()
 			end
 		end
 	end)
-	
+
 	task.spawn(_memoryStorePoller)
 	task.spawn(_retryHandler)
-	
+
 	if RunService:IsServer() then
 		local closed = false
 		local function onClose()
@@ -981,12 +1124,12 @@ function CrossServerManager:Start()
 		end
 		game:BindToClose(onClose)
 	end
-	
+
 	_log("log", "Initialized")
-	
+
 	task.delay(3, function()
 		local Map = MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME):GetRangeAsync(Enum.SortDirection.Ascending, 10)
-		
+
 		for _, entry in Map do
 			local raw = nil
 			local okGet, errGet = pcall(function()
@@ -1010,7 +1153,7 @@ function CrossServerManager:MonitoringOn(eventName: string, callback: (any) -> (
 	if list then
 		table.insert(list, callback)
 	else
-		error("Unknown monitoring event: " .. tostring(eventName))
+		error("Unknown monitoring event: "..tostring(eventName))
 	end
 end
 
