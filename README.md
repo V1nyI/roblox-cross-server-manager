@@ -103,7 +103,17 @@ end)
 - `:FlushPendingMessages()` – Immediately flush all pending messages (call on shutdown).
 - `:MonitoringOn(eventName, callback)` – Listen for internal monitoring events.
 - `:Unsubscribe(topic, id)` – Unsubscribe a specific callback from a topic.
+- `:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean})` – Publish Multiple Messages
+---
 
+---
+
+## Update logs, Version: "v1.0.3"
+- `:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean})` – Publish Multiple Messages
+## BulkPublish
+- ### Publishes all messages atomically — if one fails, none are sent.
+- Supports both MemoryStore-based retention and local-only publish.
+- Bypasses message queue if flagged for local delivery only.
 ---
 
 ## License
