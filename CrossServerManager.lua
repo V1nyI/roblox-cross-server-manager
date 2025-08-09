@@ -6,7 +6,7 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 --// Debug
-local _Debug = true
+local _debug = true
 
 --// Constants
 local MEMORY_STORE_MAP_NAME = "CrossServerMessages"
@@ -126,7 +126,7 @@ local _VERSION_URL = "https://raw.githubusercontent.com/V1nyI/roblox-cross-serve
 
 --// Utilities
 local function _log(level, ...)
-	if _Debug == false then return end
+	if _debug == false then return end
 
 	local prefix = "[CrossServerManager]:"
 	if level == "log" then
@@ -651,11 +651,11 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 						local okDecode, msg = pcall(function()
 							return HttpService:JSONDecode(raw)
 						end)
-						
+
 						if okDecode and type(msg) == "table" then
 							CrossServerManager:Publish(msg.topic, msg.payload, msg.messageType, msg.retentionTime, true, true)
 						end
-						
+
 						pcall(function()
 							QUEUE_MEMORY_STORE:RemoveAsync(entry.key)
 						end)
@@ -672,22 +672,22 @@ end
 
 local function validatePayload(payload)
 	local payloadType = typeof(payload)
-	
+
 	if payloadType == "string" or payloadType == "number" or payloadType == "boolean" or payload == nil then
 		return true
 	end
-	
+
 	if payloadType == "Instance" then
 		return false, "Payload contains Roblox Instance, which is not allowed"
 	end
-	
+
 	if payloadType == "table" then
 		for key, value in pairs(payload) do
 			local keyType = typeof(key)
 			if keyType ~= "string" and keyType ~= "number" then
 				return false, ("Invalid key type in payload: %s"):format(keyType)
 			end
-			
+
 			local ok, err = validatePayload(value)
 			if not ok then
 				return false, err
@@ -695,7 +695,7 @@ local function validatePayload(payload)
 		end
 		return true
 	end
-	
+
 	return false, ("Unsupported payload type: %s"):format(payloadType)
 end
 
@@ -709,25 +709,25 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 	if localPublish == nil then
 		localPublish = false
 	end
-	
+
 	local ok, err = validatePayload(payload)
 	if not ok then
 		_log("warn", "Publish: Invalid payload for topic", topic, err)
 		return nil, false, "InvalidPayload: "..err
 	end
-	
+
 	if not _canProcessMessage(messageType) then
 		_log("warn", "Throttled message publish for type", messageType)
 		return nil, false, "Throttled"
 	end
-	
+
 	local config = _messageTypeConfig[messageType] or {}
 	local retryPolicy = config.retryPolicy or DEFAULT_RETRY_BACKOFF
-	
+
 	local now = os.time()
 	_lastSeqPerTopic[topic] = (_lastSeqPerTopic[topic] or 0) + 1
 	local seq = _lastSeqPerTopic[topic]
-	
+
 	local uuid = _generateUUID()
 	local message = {
 		uuid = uuid,
@@ -740,24 +740,24 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 		retryPolicy = retryPolicy,
 		serverId = _serverId,
 	}
-	
+
 	if not _BypassQueue and not localPublish then
 		return self:_Proccess_Queue(topic, payload, messageType, messageRetentionTime, localPublish)
 	end
-	
+
 	if localPublish then
 		if _dedupeCheck(uuid) then
 			_log("warn", "Duplicate local publish UUID detected, ignoring:", uuid)
 			return nil, false, "Duplicate"
 		end
-		
+
 		local encodedMessage = HttpService:JSONEncode(message)
 		local messageSize = #encodedMessage
 		if messageSize >= 990 then
 			_log("warn", "Message too large for local publish ("..messageSize.." bytes), rejecting:", topic)
 			return nil, false, "MessageTooLarge"
 		end
-		
+
 		_dedupeAdd(uuid)
 		_fireSubscribers(topic, uuid, payload, seq, messageType)
 		_invokeListeners(Monitoring._listeners.onMessageSent, uuid, topic, payload, seq, messageType)
@@ -766,22 +766,22 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 			servers = {[_serverId] = true},
 			requiredAckCount = nil,
 		}
-		
+
 		return uuid, true
 	end
-	
+
 	local useMemoryStore = (type(messageRetentionTime) == "number" and messageRetentionTime > 0)
 	if not useMemoryStore then
 		messageRetentionTime = MEMORY_STORE_EXPIRY
 	end
-	
+
 	local MessageSize = #HttpService:JSONEncode(message)
 
 	if MessageSize >= 990 then
 		_log("warn", "Message too large for MessagingService ("..MessageSize.." bytes), using MemoryStore for topic:", topic)
 		return
 	end
-	
+
 	if useMemoryStore then
 		local timestampKey = tostring(now).."_"..uuid
 		local map = MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
@@ -789,14 +789,14 @@ function CrossServerManager:Publish(topic: string, payload: any, messageType: st
 		local success, err = pcall(function()
 			map:SetAsync(timestampKey, encoded, messageRetentionTime)
 		end)
-		
+
 		if not success then
 			_log("warn", "MemoryStore set failed:", err)
 		end
-		
+
 		_addRecentMessage(message)
 	end
-	
+
 	local successMs, errMs = pcall(function()
 		MessagingService:PublishAsync(topic, HttpService:JSONEncode(message))
 	end)
@@ -821,27 +821,27 @@ end
 ]]
 function CrossServerManager:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean}}, localBulkPublish: boolean)
 	assert(type(messages) == "table" and #messages > 0, "BulkPublish expects a non-empty array of message entries")
-	
+
 	if #messages > 100 then
 		_log("warn", "BulkPublish: Exceeded max batch size of 100 messages")
 		return false, "Exceeded max batch size of 100 messages"
 	end
-	
+
 	if localBulkPublish == true then
 		for _, v in ipairs(messages) do
 			v.localPublish = true
 		end
 	end
-	
+
 	local QUEUE_MEMORY_STORE = MemoryStoreService:GetSortedMap(QUEUE_MEMORY_STORE_NAME)
 	local queuedEntries = {}
-	
+
 	for index, msg in ipairs(messages) do
 		if type(msg) ~= "table" then
 			_log("warn", "BulkPublish: Invalid message at index", index)
 			return false, "Invalid message at index "..index
 		end
-		
+
 		local topic = msg.topic
 		local payload = msg.payload
 		local messageType = msg.messageType or "default"
@@ -1182,6 +1182,13 @@ end
 ]]
 function CrossServerManager:GetServerId()
 	return _serverId
+end
+
+--[[
+	Enable or disable debug mode
+]]
+function CrossServerManager:SetDebugMode(enabled: boolean)
+	_debug = enabled
 end
 
 return CrossServerManager
