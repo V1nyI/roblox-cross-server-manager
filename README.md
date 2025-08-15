@@ -1,7 +1,46 @@
-# CrossServerManager
+# CrossServerManager v1.1.0 - Now with Offline Simulation & Virtual Servers
 
-A Roblox module for advanced cross-server messaging, Supports reliable message delivery, retries, deduplication, replay, throttling, custom monitoring, using Roblox’s MessagingService and MemoryStoreService APIs.
+A Roblox module for **advanced cross-server messaging**, supporting reliable message delivery, retries, deduplication, replay, throttling, custom monitoring, and more, now with a **full offline simulation mode** so you can develop and test without needing live Roblox servers.
 
+link: https://github.com/V1nyI/roblox-cross-server-manager
+
+## **What's New in v1.1.0**
+
+* **Offline Mode** - Test your game without Roblox backend services
+* **Virtual Servers** - Create simulated servers for local multi-server testing in Studio
+* **Service Limit Simulation** - Configure quotas for MessagingService, MemoryStoreService, and DataStoreService to match Roblox limits
+* **Limit Statistics** - Check usage counters in real time with `GetLimitStats()`
+* **Offline Queue & Replay** - Queue processing and message replay now work fully in offline mode
+* **Targeted Replay** - In offline mode, replay missed messages to a specific simulated server
+* **Backward Compatible** - All online mode features from v1.0.5 remain intact
+
+## **Feature Comparison**
+
+|Feature|v1.0.5 (Old)|v1.1.0 (New)|
+| --- | --- | --- |
+|Modes|Online only|Online + Offline|
+|Virtual Servers|❌|✅|
+|Limit Simulation|❌|✅|
+|Limit Stats|❌|✅|
+|Offline Queue|❌|✅|
+|Offline Replay|❌|✅|
+|Targeted Replay|❌|✅|
+|Backwards Compatibility|✅|✅|
+
+# Offline Mode Example
+```lua
+local CSM = require(path.to.CrossServerManager)
+CSM:SetMode("offline")
+
+local serverA = CSM:CreateVirtualSimulationServer("ServerA")
+local serverB = CSM:CreateVirtualSimulationServer("ServerB")
+
+serverB:Subscribe("Chat", function(payload)
+    print("[ServerB] Received:", payload)
+end)
+
+serverA:Publish("Chat", "Hello from A!")
+```
 ---
 
 ## Features
@@ -40,13 +79,14 @@ local CrossServerManager = require(path.to.CrossServerManager)
 CrossServerManager:Start() -- Initialize
 ```
 
-You only need to call `:Start()` once per server.
+You only need to call `:Start()` once per server, Set Variable `Debug` to Enable `_log()`
 
 ---
 
 ## Basic Usage
 
 ### note: Set localPublish to true to publish the message only locally on the current server. This is useful for testing or when you want to avoid sending messages across servers.
+
 
 ```lua
 -- Subscribe to a topic
@@ -67,9 +107,9 @@ subscription:Unsubscribe()
 
 ## Replay Missed Messages
 
-Replay is one of the most powerful features of this module.
-If your server was offline or you want to "catch up" on messages sent before joining,  
-**use `ReplayMissedMessages` to process messages from a given point in time:**
+### Replay is one of the most powerful features of this module. If your server was offline or you want to "catch up" on messages sent before joining,  
+
+#### **use `ReplayMissedMessages` to process messages from a given point in time:**
 
 ```lua
 -- Replay all messages for "MyTopic" sent since a specific timestamp (e.g., last hour)
@@ -77,10 +117,10 @@ local oneHourAgo = os.time() - 3600
 CrossServerManager:ReplayMissedMessages("MyTopic", oneHourAgo)
 ```
 
-- This will fetch and deliver up to the last 40 messages for the topic that were sent since the given timestamp.
+- ### This will fetch and deliver up to the last 40 messages for the topic that were sent since the given timestamp.
+- #### Note: Messages must have been published with messageRetentionTime > 0 and not expired to be eligible for replay.
 - Deduplication ensures you won't process the same message twice.
 - Useful when a new server starts or for recovering missed events.
-- Note: Messages must have been published with messageRetentionTime > 0 and not expired to be eligible for replay.
 
 ---
 
@@ -96,60 +136,40 @@ end)
 
 ---
 
-## API Overview
+## **New API Additions**
 
-- `:Start()` – Initializes the module (run this once when your server starts).
-- `:Subscribe(topic, callback)` – Subscribe to messages on a topic.
-- `:Publish(topic, payload, messageType, messageRetentionTime)` – Publish a message. If you provide a `messageRetentionTime` (in seconds), the message will be retained in MemoryStore for replay and auto-processing.
-- `:ReplayMissedMessages(topic, sinceTimestamp)` – Replay recent messages (see above).
-- `:FlushPendingMessages()` – Immediately flush all pending messages (call on shutdown).
-- `:MonitoringOn(eventName, callback)` – Listen for internal monitoring events.
-- `:Unsubscribe(topic, id)` – Unsubscribe a specific callback from a topic.
-- `:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean})` – Publish Multiple Messages
+* `SetMode(mode)` - `"online"` or `"offline"`
+* `CreateVirtualSimulationServer(name)` - Create a simulated server in offline mode
+* `SetLimitSimulation(config)` - Enable/disable limit simulation per service
+* `GetLimitStats(service)` - View current usage stats for simulated limits
+
+## **Full API Overview**
+
+* `:Start()` - Initializes the module
+* `:Subscribe(topic, callback)` - Subscribe to messages on a topic
+* `:Publish(topic, payload, messageType, messageRetentionTime, localPublish)` - Publish a message
+* `:ReplayMissedMessages(topic, sinceTimestamp, [targetServer])` - Replay recent messages
+* `:BulkPublish(messages, localBulkPublish)` - Publish multiple messages
+* `:FlushPendingMessages()` - Immediately flush all pending messages
+* `:MonitoringOn(eventName, callback)` - Listen for monitoring events
+* `:Unsubscribe(topic, id)` - Unsubscribe a specific callback
+* `:GetServerId()` - Get the current server ID
+* `:SetDebugMode(enabled)` - Enable or disable debug logs
+* **Offline mode only:** `SetMode`, `CreateVirtualSimulationServer`, `SetLimitSimulation`, `GetLimitStats`
 ---
 
 ---
 
-## Update logs, Version: "v1.0.5"
-- `:BulkPublish(messages: {{topic: string, payload: any, messageType: string, messageRetentionTime: number, localPublish: boolean})` – Publish Multiple Messages
-## BulkPublish
-- ### Publishes all messages atomically — if one fails, none are sent.
-- #### Supports up to 100 messages in a single batch
-- Supports both MemoryStore-based retention and local-only publish.
-- Bypasses message queue if flagged for local delivery only.
+## **Update Logs – v1.1.0**
 
-## Example Usage:
-```
-local messages = {
-	{
-		topic = "Topic1",
-		payload = {
-			userId = 1,
-			score = 100
-		}
-	},
-	{
-		topic = "Topic2",
-		payload = {
-			event = "Rain",
-			time = os.time(),
-            AdminMessage = "Rain has started! Let your friends know, they have 60 seconds to join and catch the event!"
-		},
-        messageRetentionTime = 60 -- Optional: make it replayable for 60s
-	}
-}
-
-CrossServerManager:BulkPublish(messages)
-```
+* Added offline mode with virtual server support
+* Added simulated service quotas and statistics
+* Extended queue and replay to work offline
+* Added targeted replay for specific virtual servers
+* Maintains full backwards compatibility with v1.0.5
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](https://github.com/V1nyI/roblox-cross-server-manager/blob/main/LICENSE) for details.
 
----
-
-## Author
-
-Created by [Vinyl_Module](https://www.roblox.com/users/766671012/profile) (Roblox)  
-GitHub: [V1nyI](https://github.com/V1nyI)
