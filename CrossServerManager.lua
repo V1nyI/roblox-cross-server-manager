@@ -6,7 +6,7 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
 --// Debug
-local _debug = true
+local _debug = false
 
 --// Constants
 local MEMORY_STORE_MAP_NAME = "CrossServerMessages"
@@ -39,28 +39,28 @@ local MSG_GLOBAL_LIMIT = 1000 -- per minute
 local msgTotalThisMinute = 0
 
 local function resetMsgCounters()
-    msgHistory = {}
-    msgTotalThisMinute = 0
-    msgResetTime = os.clock()
+	msgHistory = {}
+	msgTotalThisMinute = 0
+	msgResetTime = os.clock()
 end
 
 local function checkMsgLimit(topic)
-    if os.clock() - msgResetTime >= 60 then
-        resetMsgCounters()
-    end
-    msgTotalThisMinute += 1
-    msgHistory[topic] = (msgHistory[topic] or 0) + 1
-    if limitConfig.MessagingService then
-        if msgTotalThisMinute > MSG_GLOBAL_LIMIT then
-            warn("[MessagingService LIMIT] Global quota exceeded.")
-            return false
-        end
-        if msgHistory[topic] > MSG_TOPIC_LIMIT then
-            warn(("[MessagingService LIMIT] Topic '%s' quota exceeded."):format(topic))
-            return false
-        end
-    end
-    return true
+	if os.clock() - msgResetTime >= 60 then
+		resetMsgCounters()
+	end
+	msgTotalThisMinute += 1
+	msgHistory[topic] = (msgHistory[topic] or 0) + 1
+	if limitConfig.MessagingService then
+		if msgTotalThisMinute > MSG_GLOBAL_LIMIT then
+			warn("[MessagingService LIMIT] Global quota exceeded.")
+			return false
+		end
+		if msgHistory[topic] > MSG_TOPIC_LIMIT then
+			warn(("[MessagingService LIMIT] Topic '%s' quota exceeded."):format(topic))
+			return false
+		end
+	end
+	return true
 end
 
 -- MemoryStoreService Limits Simulation
@@ -70,51 +70,51 @@ local msResetTime = os.clock()
 local MS_OP_LIMIT = 10000 -- total ops/min
 
 local function resetMSOps()
-    msOpsThisMinute = 0
-    msResetTime = os.clock()
+	msOpsThisMinute = 0
+	msResetTime = os.clock()
 end
 
 local function checkMSLimit()
-    if os.clock() - msResetTime >= 60 then
-        resetMSOps()
-    end
-    msOpsThisMinute += 1
-    if limitConfig.MemoryStoreService and msOpsThisMinute > MS_OP_LIMIT then
-        warn("[MemoryStore LIMIT] Operation quota exceeded.")
-        return false
-    end
-    return true
+	if os.clock() - msResetTime >= 60 then
+		resetMSOps()
+	end
+	msOpsThisMinute += 1
+	if limitConfig.MemoryStoreService and msOpsThisMinute > MS_OP_LIMIT then
+		warn("[MemoryStore LIMIT] Operation quota exceeded.")
+		return false
+	end
+	return true
 end
 
 local memoryStoreQueues = {}
 local memoryStoreMaps = {}
 
 local function msQueueEnqueue(queueName, value)
-    if not checkMSLimit() then return false end
-    memoryStoreQueues[queueName] = memoryStoreQueues[queueName] or {}
-    table.insert(memoryStoreQueues[queueName], value)
-    return true
+	if not checkMSLimit() then return false end
+	memoryStoreQueues[queueName] = memoryStoreQueues[queueName] or {}
+	table.insert(memoryStoreQueues[queueName], value)
+	return true
 end
 
 local function msQueueDequeue(queueName)
-    if not checkMSLimit() then return nil end
-    local q = memoryStoreQueues[queueName]
-    if q and #q > 0 then
-        return table.remove(q, 1)
-    end
-    return nil
+	if not checkMSLimit() then return nil end
+	local q = memoryStoreQueues[queueName]
+	if q and #q > 0 then
+		return table.remove(q, 1)
+	end
+	return nil
 end
 
 local function msMapSet(mapName, key, value)
-    if not checkMSLimit() then return false end
-    memoryStoreMaps[mapName] = memoryStoreMaps[mapName] or {}
-    memoryStoreMaps[mapName][key] = value
-    return true
+	if not checkMSLimit() then return false end
+	memoryStoreMaps[mapName] = memoryStoreMaps[mapName] or {}
+	memoryStoreMaps[mapName][key] = value
+	return true
 end
 
 local function msMapGet(mapName, key)
-    if not checkMSLimit() then return nil end
-    return memoryStoreMaps[mapName] and memoryStoreMaps[mapName][key] or nil
+	if not checkMSLimit() then return nil end
+	return memoryStoreMaps[mapName] and memoryStoreMaps[mapName][key] or nil
 end
 
 -- DataStoreService Limits Simulation
@@ -126,46 +126,46 @@ local DS_OP_LIMIT = 60 -- per key/minute simulated budget
 local dataStoreKeys = {}
 
 local function resetDSOps()
-    dsOpsThisMinute = 0
-    dataStoreKeys = {}
-    dsResetTime = os.clock()
+	dsOpsThisMinute = 0
+	dataStoreKeys = {}
+	dsResetTime = os.clock()
 end
 
 local function checkDSLimit(key)
-    if os.clock() - dsResetTime >= 60 then
-        resetDSOps()
-    end
-    dsOpsThisMinute += 1
-    dataStoreKeys[key] = dataStoreKeys[key] or {}
-    table.insert(dataStoreKeys[key], os.clock())
+	if os.clock() - dsResetTime >= 60 then
+		resetDSOps()
+	end
+	dsOpsThisMinute += 1
+	dataStoreKeys[key] = dataStoreKeys[key] or {}
+	table.insert(dataStoreKeys[key], os.clock())
 
-    if limitConfig.DataStoreService then
-        local times = dataStoreKeys[key]
-        for i = #times, 1, -1 do
-            if os.clock() - times[i] > 60 then
-                table.remove(times, i)
-            end
-        end
-        if #times > DS_OP_LIMIT then
-            warn(("[DataStore LIMIT] Key '%s' quota exceeded."):format(key))
-            return false
-        end
-    end
-    return true
+	if limitConfig.DataStoreService then
+		local times = dataStoreKeys[key]
+		for i = #times, 1, -1 do
+			if os.clock() - times[i] > 60 then
+				table.remove(times, i)
+			end
+		end
+		if #times > DS_OP_LIMIT then
+			warn(("[DataStore LIMIT] Key '%s' quota exceeded."):format(key))
+			return false
+		end
+	end
+	return true
 end
 
 -- Local simulated DataStore
 local dataStoreValues = {}
 
 local function dsSet(key, value)
-    if not checkDSLimit(key) then return false end
-    dataStoreValues[key] = value
-    return true
+	if not checkDSLimit(key) then return false end
+	dataStoreValues[key] = value
+	return true
 end
 
 local function dsGet(key)
-    if not checkDSLimit(key) then return nil end
-    return dataStoreValues[key]
+	if not checkDSLimit(key) then return nil end
+	return dataStoreValues[key]
 end
 
 export type UUID = string
@@ -268,7 +268,7 @@ Monitoring._listeners = {
 }
 
 --// Private Variables
-local _CURRENT_VERSION = "v1.1.0"
+local _CURRENT_VERSION = "v1.1.5"
 local _VERSION_URL = "https://raw.githubusercontent.com/V1nyI/roblox-cross-server-manager/refs/heads/main/Version.txt"
 
 --// Utilities
@@ -408,14 +408,14 @@ local localTopics = {}
 local function offlinePublish(serverName, topic, payload, messageType, messageRetentionTime)
 	messageType = messageType or "default"
 	local now = os.time()
-	
+
 	if not checkMsgLimit(topic) then
 		return nil, false, "MessagingLimit"
 	end
-	
+
 	_lastSeqPerTopic[topic] = (_lastSeqPerTopic[topic] or 0) + 1
 	local seq = _lastSeqPerTopic[topic]
-	
+
 	local uuid = _generateUUID()
 	local message = {
 		uuid = uuid,
@@ -428,7 +428,7 @@ local function offlinePublish(serverName, topic, payload, messageType, messageRe
 		retryCount = 0,
 		retryPolicy = DEFAULT_RETRY_BACKOFF,
 	}
-	
+
 	if type(messageRetentionTime) == "number" and messageRetentionTime > 0 then
 		local key = tostring(now).."_"..uuid
 		local ok = msMapSet(MEMORY_STORE_MAP_NAME, key, HttpService:JSONEncode(message))
@@ -436,14 +436,14 @@ local function offlinePublish(serverName, topic, payload, messageType, messageRe
 			_addRecentMessage(message)
 		end
 	end
-	
+
 	if _dedupeCheck(uuid) then
 		_invokeListeners(Monitoring._listeners.onMessageDeduped, uuid, topic)
 		return nil, false, "Duplicate"
 	end
 
 	_dedupeAdd(uuid)
-	
+
 	_fireSubscribers(topic, uuid, payload, seq, messageType)
 
 	if localTopics[topic] then
@@ -456,7 +456,7 @@ local function offlinePublish(serverName, topic, payload, messageType, messageRe
 			end)
 		end
 	end
-	
+
 	_lastAckPerMessage[uuid] = {
 		servers = {[serverName] = true},
 		requiredAckCount = nil,
@@ -468,43 +468,43 @@ local function offlinePublish(serverName, topic, payload, messageType, messageRe
 end
 
 function CrossServerManager:SetMode(newMode)
-    assert(newMode == "online" or newMode == "offline", "Invalid mode")
-    mode = newMode
-    print("[CrossServerManager] Mode set to:", mode)
+	assert(newMode == "online" or newMode == "offline", "Invalid mode")
+	mode = newMode
+	print("[CrossServerManager] Mode set to:", mode)
 end
 
 function CrossServerManager:SetLimitSimulation(config)
-    for svc, val in pairs(config) do
-        if limitConfig[svc] ~= nil then
-            limitConfig[svc] = val
-        end
-    end
+	for svc, val in pairs(config) do
+		if limitConfig[svc] ~= nil then
+			limitConfig[svc] = val
+		end
+	end
 end
 
 function CrossServerManager:CreateVirtualSimulationServer(name)
 	if mode ~= "offline" then
 		error("Virtual servers only work in offline mode.")
 	end
-	
+
 	local server = {}
 	server.name = name
-	
+
 	function server:Subscribe(topic, cb)
 		localTopics[topic] = localTopics[topic] or {}
 		table.insert(localTopics[topic], cb)
 	end
-	
+
 	function server:Publish(topic, payload, messageType, retention)
 		return offlinePublish(self.name, topic, payload, messageType, retention)
 	end
-	
+
 	function server:MSQueueEnqueue(queue, value) return msQueueEnqueue(queue, value) end
 	function server:MSQueueDequeue(queue) return msQueueDequeue(queue) end
 	function server:MSMapSet(map, key, value) return msMapSet(map, key, value) end
 	function server:MSMapGet(map, key) return msMapGet(map, key) end
 	function server:DSSet(key, value) return dsSet(key, value) end
 	function server:DSGet(key) return dsGet(key) end
-	
+
 	function server:ReplayMissedMessages(topic, sinceTimestamp)
 		return CrossServerManager:ReplayMissedMessages(topic, sinceTimestamp, self.name)
 	end
@@ -514,14 +514,14 @@ function CrossServerManager:CreateVirtualSimulationServer(name)
 end
 
 function CrossServerManager:GetLimitStats(service)
-    if service == "MessagingService" then
-        return { total = msgTotalThisMinute, perTopic = msgHistory }
-    elseif service == "MemoryStoreService" then
-        return { opsThisMinute = msOpsThisMinute }
-    elseif service == "DataStoreService" then
-        return { opsThisMinute = dsOpsThisMinute }
-    end
-    return {}
+	if service == "MessagingService" then
+		return { total = msgTotalThisMinute, perTopic = msgHistory }
+	elseif service == "MemoryStoreService" then
+		return { opsThisMinute = msOpsThisMinute }
+	elseif service == "DataStoreService" then
+		return { opsThisMinute = dsOpsThisMinute }
+	end
+	return {}
 end
 
 --[[
@@ -539,7 +539,7 @@ function CrossServerManager:Subscribe(topic: Topic, callback: SubscriberCallback
 		callback = callback,
 		active = true,
 	}
-	
+
 	if mode == "offline" then
 		localTopics[topic] = localTopics[topic] or {}
 		table.insert(localTopics[topic], function(payload, uuid, seq, messageType, fromServer)
@@ -611,8 +611,68 @@ function CrossServerManager:Subscribe(topic: Topic, callback: SubscriberCallback
 		setmetatable(self, nil)
 		for k in pairs(self) do self[k] = nil end
 	end
-
+	
 	return setmetatable({}, SubscriptionHandle)
+end
+
+--[[
+	Subscribe to a topic once
+	
+	@param topic string
+	@param callback function
+]]
+function CrossServerManager:SubscribeOnce(topic: Topic, callback: SubscriberCallback)
+	assert(type(callback) == "function", "Callback must be a function")
+	
+	local handle
+	
+	handle = self:Subscribe(topic, function(payload, uuid, seq, messageType)
+		local ok, err = pcall(callback, payload, uuid, seq, messageType)
+		if not ok then
+			_log("warn", "SubscribeOnce callback error:", err)
+		end
+		
+		if handle then
+			handle:Unsubscribe()
+			handle = nil
+		end
+	end)
+	
+	return handle
+end
+
+--[[
+	Subscribe to a topic until a condition is met or timeout
+	
+	@param topic string
+	@param callback function
+	@param conditionOrTimeout number | function
+]]
+function CrossServerManager:SubscribeUntil(topic: Topic, callback: SubscriberCallback, conditionOrTimeout)
+	assert(type(callback) == "function", "Callback must be a function")
+	assert(type(conditionOrTimeout) == "number" or type(conditionOrTimeout) == "function", "conditionOrTimeout must be a number (seconds) or function")
+	
+	local handle
+	local startTime = os.clock()
+	
+	handle = self:Subscribe(topic, function(payload, uuid, seq, messageType)
+		local ok, err = pcall(callback, payload, uuid, seq, messageType)
+		if not ok then
+			_log("warn", "SubscribeUntil callback error:", err)
+		end
+		
+		if type(conditionOrTimeout) == "number" then
+			if os.clock() - startTime >= conditionOrTimeout then
+				handle:Unsubscribe()
+			end
+		else
+			if conditionOrTimeout() then
+				handle:Unsubscribe()
+			end
+		end
+	end)
+	
+	return handle
 end
 
 --[[
@@ -837,12 +897,12 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 			retentionTime = messageRetentionTime,
 			timestamp = now,
 		}
-		
+
 		local ok = msQueueEnqueue(QUEUE_MEMORY_STORE_NAME, HttpService:JSONEncode(queueEntry))
 		if not ok then
 			return nil, false, "QueueEnqueueFailed"
 		end
-		
+
 		if not _queueProcessorRunning then
 			_queueProcessorRunning = true
 			task.spawn(function()
@@ -862,7 +922,7 @@ function CrossServerManager:_Proccess_Queue(topic: string, payload: any, message
 
 		return uuid, true
 	end
-	
+
 	local QUEUE_MEMORY_STORE = MemoryStoreService:GetSortedMap(QUEUE_MEMORY_STORE_NAME)
 
 	local okRU, reason = _RUThrottleCheck()
@@ -1317,7 +1377,7 @@ local function _memoryStorePoller()
 			task.wait(30)
 		end
 	end
-	
+
 	local map
 	local success, result = pcall(function()
 		return MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
@@ -1406,17 +1466,17 @@ function CrossServerManager:ReplayMissedMessages(topic: Topic, sinceTimestamp: n
 	if targetServer ~= nil then
 		assert(type(targetServer) == "string", "targetServer must be string if provided")
 	end
-	
+
 	if mode == "offline" then
 		local map = memoryStoreMaps[MEMORY_STORE_MAP_NAME] or {}
 		local entries = {}
-		
+
 		for key, raw in pairs(map) do
 			table.insert(entries, { key = key, value = raw })
 		end
-		
+
 		table.sort(entries, function(a, b) return a.key < b.key end)
-		
+
 		local replayed = 0
 		for _, entry in ipairs(entries) do
 			if replayed >= MAX_RECENT_MESSAGES then break end
@@ -1428,7 +1488,7 @@ function CrossServerManager:ReplayMissedMessages(topic: Topic, sinceTimestamp: n
 						_invokeListeners(Monitoring._listeners.onMessageDeduped, message.uuid, message.topic)
 					else
 						_dedupeAdd(message.uuid)
-						
+
 						if targetServer then
 							local delivered = false
 							if localTopics[topic] then
@@ -1442,12 +1502,12 @@ function CrossServerManager:ReplayMissedMessages(topic: Topic, sinceTimestamp: n
 									delivered = true
 								end
 							end
-							
+
 							if _subscribers[topic] then
 								_fireSubscribers(topic, message.uuid, message.payload, message.seq, message.messageType)
 								delivered = true
 							end
-							
+
 							_lastAckPerMessage[message.uuid] = _lastAckPerMessage[message.uuid] or { servers = {}, requiredAckCount = nil }
 							_lastAckPerMessage[message.uuid].servers[targetServer] = true
 
@@ -1464,7 +1524,7 @@ function CrossServerManager:ReplayMissedMessages(topic: Topic, sinceTimestamp: n
 
 		return true
 	end
-	
+
 	local map = MemoryStoreService:GetSortedMap(MEMORY_STORE_MAP_NAME)
 	if not map then
 		_log("warn", "MemoryStoreService map not available for replay")
